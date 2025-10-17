@@ -59,9 +59,9 @@ Example structure:
 │ ├─ preprocessor.joblib
 │ └─ meta.json
 ├─ logistic_regression/
-├─ model.joblib
-├─ preprocessor.joblib
-└─ meta.json
+│ ├─ model.joblib
+│ ├─ preprocessor.joblib
+│ └─ meta.json
 ```
 
 ---
