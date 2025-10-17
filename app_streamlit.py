@@ -6,7 +6,9 @@ import joblib
 import json
 import io
 from pathlib import Path
-from typing import Tuple, Optional, Dict, Any
+from typing import Tuple, Optional, Dict, Any, List
+import zipfile
+import tempfile
 
 st.set_page_config(page_title="Rossmann Sales Forecast", page_icon="🧮", layout="wide")
 
@@ -15,7 +17,7 @@ st.caption("Select a saved model bundle, or load one via Upload / Google Drive, 
 
 ART_DIR = Path("./models")
 
-# ---------- Local bundles (original behavior) ----------
+# ---------- Local bundles ----------
 @st.cache_resource
 def list_bundles(art_dir: Path):
     if not art_dir.exists():
@@ -57,10 +59,43 @@ def _normalize_bundle(obj: Any) -> Tuple[Any, Any, Dict[str, Any]]:
         raise ValueError("meta must contain 'cat_features' and 'num_features'.")
     return model, preproc, meta
 
-def load_bundle_from_bytes(file_bytes: bytes) -> Tuple[Any, Any, Dict[str, Any]]:
-    file_obj = io.BytesIO(file_bytes)
-    obj = joblib.load(file_obj)
+def load_bundle_from_bytes_or_zip(file_bytes: bytes, filename: str="") -> Tuple[Any, Any, Dict[str, Any]]:
+    """Takes one .joblib-dictionary, or .zip with three files."""
+    # if zip — read three files
+    if filename.lower().endswith(".zip") or zipfile.is_zipfile(io.BytesIO(file_bytes)):
+        with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
+            names = {n.lower(): n for n in zf.namelist()}
+            need = ["model.joblib", "preprocessor.joblib", "meta.json"]
+            missing = [n for n in need if n not in names]
+            if missing:
+                raise ValueError(f"ZIP missing required files: {missing}")
+            with zf.open(names["model.joblib"]) as f:
+                model = joblib.load(f)
+            with zf.open(names["preprocessor.joblib"]) as f:
+                preproc = joblib.load(f)
+            with zf.open(names["meta.json"]) as f:
+                meta = json.load(f)
+            return model, preproc, meta
+    # else try as .joblib-dictionary
+    obj = joblib.load(io.BytesIO(file_bytes))
     return _normalize_bundle(obj)
+
+def load_bundle_from_uploads(files: List[Any]) -> Tuple[Any, Any, Dict[str, Any]]:
+    """Takes one .joblib (dict), or set of 3 files, or one .zip."""
+    # Case 1: one file
+    if len(files) == 1:
+        f = files[0]
+        b = f.read()
+        return load_bundle_from_bytes_or_zip(b, f.name)
+    # Case 2: few files — seek for three needed
+    by_name = {f.name.lower(): f for f in files}
+    need = ["model.joblib", "preprocessor.joblib", "meta.json"]
+    if all(n in by_name for n in need):
+        model = joblib.load(by_name["model.joblib"])
+        preproc = joblib.load(by_name["preprocessor.joblib"])
+        meta = json.load(by_name["meta.json"])
+        return model, preproc, meta
+    raise ValueError("Provide either one .joblib dict, one .zip, or the three files: model.joblib, preprocessor.joblib, meta.json.")
 
 def parse_gdrive_id(text: str) -> Optional[str]:
     text = (text or "").strip()
@@ -79,12 +114,12 @@ def parse_gdrive_id(text: str) -> Optional[str]:
     return text
 
 @st.cache_data(show_spinner=False)
-def download_from_gdrive(file_id: str) -> bytes:
+def download_from_gdrive(file_id: str) -> Tuple[bytes, str]:
     import requests
     session = requests.Session()
     URL = "https://drive.google.com/uc?export=download"
     params = {"id": file_id}
-    response = session.get(URL, params=params, stream=True)
+    response = session.get(URL, params=params, stream=True, timeout=None)
     # Confirm token for large files
     def _get_confirm_token(resp):
         for k, v in resp.cookies.items():
@@ -94,9 +129,19 @@ def download_from_gdrive(file_id: str) -> bytes:
     token = _get_confirm_token(response)
     if token:
         params["confirm"] = token
-        response = session.get(URL, params=params, stream=True)
+        response = session.get(URL, params=params, stream=True, timeout=60)
     response.raise_for_status()
-    return response.content
+    # Read in stream
+    content = io.BytesIO()
+    for chunk in response.iter_content(chunk_size=1024 * 1024):
+        if chunk:
+            content.write(chunk)
+    # Get filename from headers (if exists)
+    cd = response.headers.get("Content-Disposition", "")
+    fname = ""
+    if "filename=" in cd:
+        fname = cd.split("filename=")[-1].strip('"; ')
+    return content.getvalue(), fname or f"{file_id}.bin"
 
 # ---------- Preprocess ----------
 def preprocess_input(df: pd.DataFrame, meta: dict, preproc):
@@ -111,9 +156,7 @@ def preprocess_input(df: pd.DataFrame, meta: dict, preproc):
 # ---------- Sidebar: Model source ----------
 with st.sidebar:
     st.header("Load Model")
-    src_tab_local, src_tab_upload, src_tab_gdrive = st.tabs(["Local bundles", "Upload (.joblib)", "Google Drive"])
-
-    chosen_source = st.radio("Source", ["Local", "Upload", "Google Drive"], index=0, horizontal=True, label_visibility="collapsed")
+    src_tab_local, src_tab_upload, src_tab_gdrive = st.tabs(["Local bundles", "Upload", "Google Drive"])
 
     bundle_loaded = False
     model = preproc = meta = None
@@ -132,25 +175,26 @@ with st.sidebar:
 
     # Upload
     with src_tab_upload:
-        up = st.file_uploader("Upload bundle (.joblib dict with model/preprocessor/meta)", type=["joblib", "pkl"])
-        if up is not None and st.button("Load uploaded file", use_container_width=True):
+        st.caption("Upload: (a) one .joblib-dictionary OR (b) three files: model.joblib, preprocessor.joblib, meta.json OR (c) one .zip with that three files.")
+        ups = st.file_uploader("Upload files", type=["joblib","pkl","json","zip"], accept_multiple_files=True)
+        if ups and st.button("Load uploaded file(s)", use_container_width=True):
             try:
-                model, preproc, meta = load_bundle_from_bytes(up.read())
+                model, preproc, meta = load_bundle_from_uploads(ups)
                 bundle_loaded = True
-                st.success("Bundle loaded from uploaded file.")
+                st.success("Bundle loaded from uploaded file(s).")
             except Exception as e:
                 st.error(f"Failed to load uploaded bundle: {e}")
 
     # Google Drive
     with src_tab_gdrive:
-        gd_text = st.text_input("Paste Google Drive link or File ID", value="")
+        gd_text = st.text_input("Paste Google Drive link or File ID (single file: .joblib or .zip)", value="")
         if st.button("Download & load from Drive", use_container_width=True):
             try:
                 fid = parse_gdrive_id(gd_text)
                 if not fid:
                     raise ValueError("Could not parse Google Drive file ID.")
-                content = download_from_gdrive(fid)
-                model, preproc, meta = load_bundle_from_bytes(content)
+                content, filename = download_from_gdrive(fid)
+                model, preproc, meta = load_bundle_from_bytes_or_zip(content, filename)
                 bundle_loaded = True
                 st.success("Bundle loaded from Google Drive.")
             except Exception as e:

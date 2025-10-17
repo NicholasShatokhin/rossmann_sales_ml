@@ -2,13 +2,13 @@
 
 ## Streamlit app
 
-https://rossmann-sales-ml.streamlit.app/
+https://rossmann-sales-ml.streamlit.app/ (Random Forest model is too big for GitHub, so, need to be uploaded via google drive: https://drive.google.com/file/d/1fQWk0hGJuFuz1cUaA8pYX8c7hSteUTWs/view?usp=sharing)
 
 ## Manual run
 
 Before start, download:
 - data file **rossman_prepared.csv** https://drive.google.com/file/d/1l5ofh6iX6yWtnltgS7nGdH_qks_6O0wA/view?usp=drive_link and put it into **data** folder
-- random forests saved model https://drive.google.com/file/d/1hIpRqIya4HJjdckMeJDU6YQ_OwB7Iv-l/view?usp=sharing and put it into **models/random_forest** folder (or generate new using **MLproject.ipynb**)
+- random forests saved model https://drive.google.com/file/d/1fQWk0hGJuFuz1cUaA8pYX8c7hSteUTWs/view?usp=sharing and unzip it into **models/random_forest** folder (or generate new using **MLproject.ipynb**)
 
 This repository contains:
 - **Streamlit-app** for inference of saved models
