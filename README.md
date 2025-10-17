@@ -6,7 +6,7 @@ Before start, download:
 
 This repository contains:
 - **Streamlit-app** for inference of saved models
-- **Jupiter Notebook/scripts** for data preparation and training
+- **Jupiter Notebook** for data preparation and training
 
 ![Streamlit Screenshot](./streamlit_screenshot.png)
 
