@@ -1,5 +1,11 @@
 # Rossmann Sales Forecast
 
+## Streamlit app
+
+https://rossmann-sales-ml.streamlit.app/
+
+## Manual run
+
 Before start, download:
 - data file **rossman_prepared.csv** https://drive.google.com/file/d/1l5ofh6iX6yWtnltgS7nGdH_qks_6O0wA/view?usp=drive_link and put it into **data** folder
 - random forests saved model https://drive.google.com/file/d/1hIpRqIya4HJjdckMeJDU6YQ_OwB7Iv-l/view?usp=sharing and put it into **models/random_forest** folder (or generate new using **MLproject.ipynb**)

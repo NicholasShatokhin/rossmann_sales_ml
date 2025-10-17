@@ -3,4 +3,4 @@ numpy
 matplotlib
 seaborn
 scikit-learn
-joblib
+joblib==1.5.2
